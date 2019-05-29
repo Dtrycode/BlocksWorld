@@ -88,12 +88,14 @@ public class HelloBlocksWorld {
 		ObjectParameterizedActionType actiontype = bw.new StackActionType("stack");
 
 		StringBuilder buf = new StringBuilder();
+		// all applicable stack actions
 		List<Action> actions = actiontype.allApplicableActions(s);
 
 		for (Action act : actions) {
 			buf.append(((ObjectParameterizedActionType.SAObjectParameterizedAction) act).toString()).append("\n");
 		}
 
+		// all applicable unstack actions
 		List<ObjectInstance> blocks = ((BlocksWorldState) s).objects();
 		for (ObjectInstance b : blocks) {
 			BlocksWorldBlock bwb = (BlocksWorldBlock) b;
@@ -275,6 +277,7 @@ public class HelloBlocksWorld {
 			}
 			System.out.println();
 		}
+		System.out.println();
 	}
 
 	/**
@@ -302,6 +305,30 @@ public class HelloBlocksWorld {
 	}
 
 	/**
+	 * return one of the heighest towers
+	 */
+	public static BlocksWorldTower maxTower(List<BlocksWorldTower> towers) {
+		int high = -1;
+		List<Integer> indices = null;
+		for (int i = 0; i < towers.size(); i++) {
+			BlocksWorldTower tower = towers.get(i);
+			if (indices == null || high < tower.getHeight()) {
+				high = tower.getHeight();
+				indices = new ArrayList<Integer>();
+				indices.add(i);
+			} else if (high == tower.getHeight()) {
+				indices.add(i);
+			}
+		}
+
+		// randomly select one heighest tower as the target tower
+		Random rand = new Random();
+		int ind = rand.nextInt(indices.size());
+		return towers.get((int) indices.get(ind));
+	}
+
+
+	/**
 	 * Test 2:
 	 * Blocks world with towers and random initialization
 	 */
@@ -310,7 +337,7 @@ public class HelloBlocksWorld {
 		BlocksWorld bw = new BlocksWorld();
 
 		// set terminal state
-		BlocksWorldTerminalFunction tf = new BlocksWorldTerminalFunction("clear", "block1");
+		BlocksWorldTerminalFunction tf = new BlocksWorldTerminalFunction("stack");
 		BlocksWorldRewardFunction rf = new BlocksWorldRewardFunction(tf, 10., -1.);
 		bw.setTf(tf);
 		bw.setRf(rf);
@@ -348,45 +375,107 @@ public class HelloBlocksWorld {
 
 			// test the BlocksWorldTower class by implementing the optimal strategy
 			List<BlocksWorldTower> towers = new LinkedList<BlocksWorldTower>(((BlocksWorldState) s0).getTowers());
-			// find the heighest tower
-			int high = -1;
-			List<Integer> indices = null;
-			for (int i = 0; i < towers.size(); i++) {
-				BlocksWorldTower tower = towers.get(i);
-				if (indices == null || high < tower.getHeight()) {
-					high = tower.getHeight();
-					indices = new ArrayList<Integer>();
-					indices.add(high);
-				} else if (high == tower.getHeight()) {
-					indices.add(high);
-				}
-			}
-			// randomly select one heighest tower as the target tower
+			
 			Random rand = new Random();
-			int ind = rand.nextInt(indices.size());
-			BlocksWorldTower targetTower = towers.remove((int) indices.get(ind));
 
+			// --------Testing Tower---------
+			// randomly select one heighest tower as the target tower
+			// BlocksWorldTower targetTower = maxTower(towers);
+			// towers.remove(tower);
 			// loop until no tower left:
 			// randomly select one tower and move all blocks one by one in that tower to the target tower
+			// State s = s0;
+			// while (!towers.isEmpty()) {
+			// 	int cur = rand.nextInt(towers.size());
+			// 	BlocksWorldTower curTower = towers.remove(cur);
+			// 	while (curTower.getHeight() > 0) {
+			// 		s = moveFromTowerToTower(bw, domain, s, curTower, targetTower);
+
+			// 		try {
+			// 			TimeUnit.SECONDS.sleep(2);
+			// 		} catch (Exception ex) {
+
+			// 		}
+
+			// 		exp.updateState(s);
+
+			// 		// print out the blocks in each tower
+			// 		printBlocks(s);
+			// 		System.out.println(model.terminal(s));
+			// 		System.out.println();
+			// 	}
+			// }
+
+			// -------Optimal vs. Not optimal--------
+			// decide optimality on step basis
 			State s = s0;
-			while (!towers.isEmpty()) {
-				int cur = rand.nextInt(towers.size());
-				BlocksWorldTower curTower = towers.remove(cur);
-				while (curTower.getHeight() > 0) {
-					s = moveFromTowerToTower(bw, domain, s, curTower, targetTower);
 
-					try {
-						TimeUnit.SECONDS.sleep(2);
-					} catch (Exception ex) {
+			int numSteps = 0;
+			int maxSteps = 10;
 
+			// probability to choose random action
+			double epsilon = 0.7;
+
+			while (!model.terminal(s) && (numSteps < maxSteps)) {
+
+				double p = rand.nextDouble();
+
+				if (p < epsilon) {
+					// random action
+					System.out.println("--random action--");
+					ObjectParameterizedActionType actiontype = bw.new StackActionType("stack");
+
+					List<Action> actions = actiontype.allApplicableActions(s);
+
+					// randomly select an action
+					int ind = rand.nextInt(actions.size());
+					Action action = actions.get(ind);
+
+					String [] params = ((ObjectParameterizedAction) action).getObjectParameters();
+
+					BlocksWorldBlock aBlock = (BlocksWorldBlock) ((BlocksWorldState) s).object(params[0]);
+					BlocksWorldBlock bBlock = (BlocksWorldBlock) ((BlocksWorldState) s).object(params[1]);
+
+					BlocksWorldTower aTower = aBlock.tower;
+					BlocksWorldTower bTower = bBlock.tower;
+
+					aTower.removeBlockTop();
+					bTower.removeBlockTop();
+
+					s = ((BWModel) ((FactoredModel) domain.getModel()).getStateModel()).sample(s, action);
+
+					aBlock = (BlocksWorldBlock) ((BlocksWorldState) s).object(params[0]);
+					bBlock = (BlocksWorldBlock) ((BlocksWorldState) s).object(params[1]);
+
+					bTower.addBlockTop(bBlock);
+					bTower.addBlockTop(aBlock);
+
+				} else {
+					// optimal action
+					System.out.println("--optimal action--");
+					BlocksWorldTower targetTower = maxTower(towers);
+					BlocksWorldTower curTower = targetTower;
+					while ((curTower == targetTower) || (curTower.getHeight() == 0)) {
+						int ind = rand.nextInt(towers.size());
+						curTower = towers.get(ind);
 					}
-
-					exp.updateState(s);
-
-					// print out the blocks in each tower
-					printBlocks(s);
+					s = moveFromTowerToTower(bw, domain, s, curTower, targetTower);
 				}
+
+				try {
+					TimeUnit.SECONDS.sleep(2);
+				} catch (Exception ex) {
+
+				}
+
+				exp.updateState(s);
+
+				// print out the blocks in each tower
+				printBlocks(s);
+				
 			}
+
+			System.out.println("--agent finishes--");
 
 		}
 
